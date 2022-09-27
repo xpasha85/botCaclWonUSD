@@ -1,5 +1,6 @@
 import telebot
 import requests
+from pyairtable import Table
 
 
 class Svyazka:
@@ -11,6 +12,48 @@ class Svyazka:
 
 svyzki_dict = {}
 client = telebot.TeleBot('5630714715:AAEyHjpFNHdeHFTu-h5U3-JMSTs5BzMinEA')
+
+
+def usd_krw_api() -> str:
+    url = "https://openexchangerates.org/api/latest.json?app_id=b3aec8e91a634482b797a7e29bbd38f0&" \
+          "symbols=KRW&prettyprint=true"
+    headers = {"Accept": "application/json"}
+    response = requests.get(url, headers=headers).json()
+    usdwon = response['rates']['KRW']
+    return usdwon
+
+
+@client.message_handler(commands=["run_auto"])
+def run_auto(message):
+    chat_id = message.chat.id
+    table = Table('keySp0t9lDFoYBbEl', 'appXujWj3BOKy9GDm', 'USDKRW')
+    last_record = table.first()
+    usd = last_record['fields']['USD']
+    krw = last_record['fields']['KRW']
+    usdwon = int(usd_krw_api()) - 10
+    client.send_message(message.chat.id, 'Щас все посчитаем!!!')
+    client.send_message(message.chat.id, f'Для расчета будут использованые следующие курсы: \n'
+                                         f'Курс 🇺🇸 (1$) - {str(usd)} руб.\n'
+                                         f'Курс 🇰🇷 (1000₩) - {str(krw)} руб.\n'
+                                         f'Курс USDKWR (XE 1$) - {str(usdwon)}₩')
+    usd40 = int(round((40000 + 100) * usd, -3))  # 40.000$ если купить в ББР РУБ
+    usd40_txt = '{0:,}'.format(usd40).replace(',', '.')  # форматированное представление рублей
+    get_won_kor = round(40000 * usdwon, -3)  # примерное количесво ВОН по XE курсу
+    won_kor_txt = '{0:,}'.format(get_won_kor).replace(',', '.')  # форматированное представление ВОН
+    prim_rub_won = int(
+        round((get_won_kor + 35000) * (krw / 1000), -3))  # полученое кол-во вон купить в рублях в Приморье
+    prim_rub_txt = '{0:,}'.format(prim_rub_won).replace(',', '.')
+    diff = usd40 - prim_rub_won  # разница в рублях в банках
+    diff_frm = '{0:,}'.format(abs(diff)).replace(',', '.')
+    if diff >= 0:
+        diff_txt = f'Выгоднее в 🇰🇷 на {diff_frm}руб.'
+    else:
+        diff_txt = f'Выгоднее в 🇺🇸 на {diff_frm}руб.'
+    text = f'40000$ в ББР - примерно {usd40_txt}руб.\n' \
+           f'В Корее получат примерно {won_kor_txt}₩\n' \
+           f'☝ эта же сумма в Приморье - {prim_rub_txt}руб.\n\n' \
+           f'Итого: {diff_txt}'
+    client.send_message(message.chat.id, text)
 
 
 @client.message_handler(commands=["run"])
@@ -38,19 +81,13 @@ def user_unswer(message):
                                              'Начните все сначала.')
 
 
-
 def calc_unswer(message):
     try:
         user_id = message.chat.id
         svyazka = svyzki_dict[user_id]
         svyazka.won = float(message.text)
         client.send_message(message.chat.id, 'Щас все посчитаем!')
-
-        url = "https://openexchangerates.org/api/latest.json?app_id=b3aec8e91a634482b797a7e29bbd38f0&" \
-              "symbols=KRW&prettyprint=true"
-        headers = {"Accept": "application/json"}
-        response = requests.get(url, headers=headers).json()
-        usdwon = response['rates']['KRW']
+        usdwon = usd_krw_api()  # курс обмена доллар-вона по API
         usd40 = int(round((40000 + 100) * svyazka.usd, -3))  # 40.000$ если купить в ББР  РУБ
         usd40_txt = '{0:,}'.format(usd40).replace(',', '.')  # форматированное представление рублей
         get_won_kor = round(40000 * (int(usdwon) - 10), -3) # примерное количесво ВОН по XE курсу
